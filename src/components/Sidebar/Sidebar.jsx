@@ -32,9 +32,9 @@ const TEAMS = [
 ];
 
 const ROUTINES = [
-    { icon: <Pill className="w-4 h-4 text-rose-400" />, label: "Tomar remédio", time: "08:00" },
-    { icon: <Droplet className="w-4 h-4 text-cyan-400" />, label: "Beber água", time: "10:00" },
-    { icon: <Clock className="w-4 h-4 text-amber-400" />, label: "Pausa para os olhos", time: "15:00" },
+    { icon: <Pill className="w-4 h-4 text-rose-400" />, label: "Tomar remédio", time: "08:00", streak: 15, aiAdjusted: false },
+    { icon: <Droplet className="w-4 h-4 text-cyan-400" />, label: "Beber água", time: "10:00", streak: 0, aiAdjusted: false },
+    { icon: <Clock className="w-4 h-4 text-amber-400" />, label: "Pausa para os olhos", time: "15:30", streak: 5, aiAdjusted: true },
 ];
 
 // ----- Componente -----
@@ -139,8 +139,8 @@ export function Sidebar({ isRecording, onToggleRecording }) {
                         onClick={onToggleRecording}
                         title="Gravar Áudio"
                         className={`p-2 rounded-lg transition-all duration-300 ${isRecording
-                                ? "bg-red-500/20 text-red-500 animate-pulse"
-                                : "text-gray-400 hover:text-violet-400 hover:bg-gray-800"
+                            ? "bg-red-500/20 text-red-500 animate-pulse"
+                            : "text-gray-400 hover:text-violet-400 hover:bg-gray-800"
                             }`}
                     >
                         <Mic className="w-5 h-5" />

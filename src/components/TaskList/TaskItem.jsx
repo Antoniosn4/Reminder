@@ -130,6 +130,23 @@ export function TaskItem({
                                 {task.time}
                             </span>
 
+                            {/* Feature 5: Avatar do responsável pela tarefa */}
+                            {task.assignee && (
+                                <div
+                                    className="flex items-center gap-1 bg-gray-900/80 border border-gray-700 px-1.5 py-0.5 rounded-md"
+                                    title={`Atribuído a ${task.assignee.name}`}
+                                >
+                                    <img
+                                        src={task.assignee.avatar}
+                                        className="w-3.5 h-3.5 rounded-full"
+                                        alt={task.assignee.name}
+                                    />
+                                    <span className="text-[9px] text-gray-400 font-medium">
+                                        {task.assignee.name}
+                                    </span>
+                                </div>
+                            )}
+
                             {hasSubtasks && (
                                 <span
                                     className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border transition-colors duration-300

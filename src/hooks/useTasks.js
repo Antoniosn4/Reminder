@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from "react";
 import { callGemini } from "../services/geminiService";
+import { MOCK_TEAM } from "../constants/mockTeam";
 
 // ----- Schemas de resposta Gemini -----
 
@@ -45,6 +46,7 @@ const INITIAL_TASKS = [
         completed: false,
         project: "Frontend",
         projectColor: "#3b82f6",
+        assignee: MOCK_TEAM[0],
     },
     {
         id: 2,
@@ -54,6 +56,7 @@ const INITIAL_TASKS = [
         completed: false,
         project: "Reuniões",
         projectColor: "#8b5cf6",
+        assignee: null,
     },
     {
         id: 3,
@@ -63,6 +66,7 @@ const INITIAL_TASKS = [
         completed: false,
         project: "Marketing",
         projectColor: "#ec4899",
+        assignee: MOCK_TEAM[1],
     },
     {
         id: 4,
@@ -72,6 +76,7 @@ const INITIAL_TASKS = [
         completed: true,
         project: "Infra",
         projectColor: "#f97316",
+        assignee: null,
     },
 ];
 
@@ -99,19 +104,26 @@ export function useTasks() {
 
     /**
      * Interpreta o texto em linguagem natural via Gemini e adiciona a nova tarefa.
+     * Aceita um membro do time pré-resolvido via @mention (Feature 5).
      * Simula sincronização após 2,5s. Usa fallback local se a IA falhar.
+     *
+     * @param {string} rawText - Texto bruto digitado pelo usuário.
+     * @param {import("../constants/mockTeam").TeamMember | null} [assignee] - Membro mencionado.
      */
     const addTaskFromText = useCallback(
-        async (rawText) => {
+        async (rawText, assignee = null) => {
             if (!rawText.trim() || isAnalyzing) return;
 
             setIsAnalyzing(true);
 
-            const prompt = `Analise a seguinte tarefa natural digitada pelo usuário e estruture as informações extraídas. Entrada: "${rawText}"`;
+            // Remove as menções (@Nome) do texto antes de enviar para a IA
+            const cleanText = rawText.replace(/@\w+/g, "").trim();
+
+            const prompt = `Analise a seguinte tarefa natural digitada pelo usuário e estruture as informações extraídas. Entrada: "${cleanText}"`;
             const parsedData = await callGemini(prompt, TASK_PARSE_SCHEMA);
 
             const taskData = parsedData ?? {
-                title: rawText,
+                title: cleanText,
                 time: "Hoje",
                 project: "Entrada",
                 projectColor: "#6b7280",
@@ -120,6 +132,7 @@ export function useTasks() {
             const newTask = {
                 id: Date.now(),
                 ...taskData,
+                assignee,
                 syncStatus: "pending",
                 completed: false,
                 subtasks: [],

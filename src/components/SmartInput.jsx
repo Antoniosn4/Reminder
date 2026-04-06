@@ -1,23 +1,34 @@
 // =============================================================
 //  SmartInput.jsx
-//  Componente do campo de entrada inteligente com suporte a NLP e gravação de voz.
+//  Campo de entrada inteligente com suporte a NLP, gravação e @mention.
+//  Features 3 (Dictation) e 5 (Colaboração).
 // =============================================================
 
-import { useRef } from "react";
 import { Plus, Send, Loader2 } from "lucide-react";
+
+/** Alturas relativas de cada barra de onda — definidas uma vez para estabilidade. */
+const WAVE_BARS = [60, 100, 45, 85, 55];
 
 /**
  * @param {{
+ *   inputRef: React.RefObject<HTMLInputElement>,
  *   value: string,
  *   isRecording: boolean,
  *   isAnalyzing: boolean,
  *   onChange: (value: string) => void,
- *   onSubmit: (e: React.FormEvent) => void
+ *   onSubmit: (e: React.FormEvent) => void,
+ *   children?: React.ReactNode  // slot para o MentionMenu posicionado externamente
  * }} props
  */
-export function SmartInput({ value, isRecording, isAnalyzing, onChange, onSubmit }) {
-    const inputRef = useRef(null);
-
+export function SmartInput({
+    inputRef,
+    value,
+    isRecording,
+    isAnalyzing,
+    onChange,
+    onSubmit,
+    children,
+}) {
     const showSendButton = value && !isRecording && !isAnalyzing;
 
     return (
@@ -39,17 +50,39 @@ export function SmartInput({ value, isRecording, isAnalyzing, onChange, onSubmit
                 type="text"
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
-                disabled={isAnalyzing}
+                disabled={isAnalyzing || isRecording}
                 placeholder={
                     isAnalyzing
-                        ? "✨ A IA está processando sua tarefa..."
-                        : "Digite uma tarefa ou use linguagem natural..."
+                        ? "✨ A IA está processando..."
+                        : "Digite uma tarefa ou delegue com '@'..."
                 }
                 className="flex-1 bg-transparent border-none text-gray-100 placeholder-gray-500 text-lg focus:ring-0 px-2 h-14 w-full outline-none disabled:opacity-50"
             />
 
             {/* Ações à direita */}
             <div className="flex items-center gap-2 pr-2">
+                {/* Feature 3: Ondas sonoras animadas durante a gravação */}
+                {isRecording && (
+                    <div className="flex items-center gap-[3px] px-2 h-8 mr-2">
+                        {WAVE_BARS.map((heightPct, i) => (
+                            <div
+                                key={i}
+                                className="w-1 bg-violet-400 rounded-full animate-wave"
+                                style={{
+                                    height: `${heightPct}%`,
+                                    animationDelay: `${i * 0.15}s`,
+                                }}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {isRecording && (
+                    <span className="text-red-400 text-sm font-medium animate-pulse pr-2">
+                        Ouvindo...
+                    </span>
+                )}
+
                 {showSendButton && (
                     <button
                         type="submit"
@@ -64,24 +97,11 @@ export function SmartInput({ value, isRecording, isAnalyzing, onChange, onSubmit
                         <Loader2 className="w-6 h-6" />
                     </div>
                 )}
-
-                {isRecording && (
-                    <div className="flex items-center gap-2 pr-4">
-                        <div className="flex gap-1">
-                            {[0, 150, 300].map((delay) => (
-                                <span
-                                    key={delay}
-                                    className="w-1.5 h-1.5 bg-red-500 rounded-full animate-bounce"
-                                    style={{ animationDelay: `${delay}ms` }}
-                                />
-                            ))}
-                        </div>
-                        <span className="text-red-400 text-sm font-medium animate-pulse">
-                            Gravando...
-                        </span>
-                    </div>
-                )}
             </div>
+
+            {/* Slot para o MentionMenu (posicionado pelo pai) */}
+            {children}
         </form>
     );
 }
+
