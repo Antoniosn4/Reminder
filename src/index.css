@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS global minimamente configurado */
+html, body, #root {
+  height: 100%;
+}
