@@ -1,11 +1,14 @@
 // =============================================================
 //  useTasks.js
 //  Custom Hook — Gerenciamento de estado e lógica de negócio das tarefas.
-//  Responsabilidade: CRUD de tarefas e integração com a IA via geminiService.
+//  Responsabilidade: CRUD de tarefas, hidratação do IndexedDB e
+//  integração com a IA via geminiService.
 // =============================================================
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { callGemini } from "../services/geminiService";
+import { getAllTasks, saveAllTasks } from "../services/storageService";
+import { syncTask, deleteCalendarEvent } from "../services/calendarService";
 import { MOCK_TEAM } from "../constants/mockTeam";
 
 // ----- Schemas de resposta Gemini -----
@@ -35,56 +38,36 @@ const SUBTASK_SCHEMA = {
     },
 };
 
-// ----- Dados Iniciais (Mock) -----
-
-const INITIAL_TASKS = [
-    {
-        id: 1,
-        title: "Revisar PR do novo design system",
-        time: "10:00",
-        syncStatus: "synced",
-        completed: false,
-        project: "Frontend",
-        projectColor: "#3b82f6",
-        assignee: MOCK_TEAM[0],
-    },
-    {
-        id: 2,
-        title: "Call de alinhamento com a equipe de produto",
-        time: "14:30",
-        syncStatus: "pending",
-        completed: false,
-        project: "Reuniões",
-        projectColor: "#8b5cf6",
-        assignee: null,
-    },
-    {
-        id: 3,
-        title: "Aprovar orçamento da campanha Q4",
-        time: "16:00",
-        syncStatus: "synced",
-        completed: false,
-        project: "Marketing",
-        projectColor: "#ec4899",
-        assignee: MOCK_TEAM[1],
-    },
-    {
-        id: 4,
-        title: "Renovar assinatura do servidor AWS",
-        time: "Amanhã",
-        syncStatus: "synced",
-        completed: true,
-        project: "Infra",
-        projectColor: "#f97316",
-        assignee: null,
-    },
-];
-
 // ----- Hook -----
 
 export function useTasks() {
-    const [tasks, setTasks] = useState(INITIAL_TASKS);
+    const [tasks, setTasks] = useState([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    /**
+     * Flag que indica se a hidratação inicial do IndexedDB já ocorreu.
+     * Impede que o useEffect de persistência salve uma lista vazia
+     * antes de os dados terem sido carregados.
+     */
+    const isHydrated = useRef(false);
+
+    // ── Hidratação ──────────────────────────────────────────────────────────
+    useEffect(() => {
+        async function hydrate() {
+            const stored = await getAllTasks();
+            setTasks(stored);
+            isHydrated.current = true;
+        }
+        hydrate();
+    }, []);
+
+    // ── Persistência ────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isHydrated.current) return;
+        saveAllTasks(tasks);
+    }, [tasks]);
+
+    // ── Operações de Estado ──────────────────────────────────────────────────
 
     /** Atualiza campos específicos de uma tarefa pelo seu id. */
     const updateTask = useCallback((id, updates) => {
@@ -100,6 +83,39 @@ export function useTasks() {
                 task.id === id ? { ...task, completed: !task.completed } : task
             )
         );
+    }, []);
+
+    /** Remove permanentemente uma tarefa pelo seu id. */
+    const deleteTask = useCallback(async (id) => {
+        // Busca o gcalEventId antes de remover do estado
+        setTasks((prev) => {
+            const task = prev.find((t) => t.id === id);
+            if (task?.gcalEventId) {
+                // Fire-and-forget: remove do GCal em background
+                deleteCalendarEvent(task.gcalEventId);
+            }
+            return prev.filter((t) => t.id !== id);
+        });
+    }, []);
+
+    /**
+     * Atualiza campos específicos de uma tarefa E re-sincroniza com o Google Calendar
+     * quando campos relevantes (title, time) são alterados.
+     */
+    const updateTaskAndSync = useCallback((id, updates) => {
+        setTasks((prev) => {
+            const updated = prev.map((task) =>
+                task.id === id ? { ...task, ...updates } : task
+            );
+            // Se o update contém título ou horário, re-sincroniza com GCal
+            if ("title" in updates || "time" in updates) {
+                const target = updated.find((t) => t.id === id);
+                if (target) {
+                    syncTask(target); // Fire-and-forget (não precisamos do eventId aqui)
+                }
+            }
+            return updated;
+        });
     }, []);
 
     /**
@@ -136,15 +152,20 @@ export function useTasks() {
                 syncStatus: "pending",
                 completed: false,
                 subtasks: [],
+                gcalEventId: null,
             };
 
             setTasks((prev) => [newTask, ...prev]);
             setIsAnalyzing(false);
 
-            // Simula sincronização com calendário
-            setTimeout(() => {
-                updateTask(newTask.id, { syncStatus: "synced" });
-            }, 2500);
+            // Sincronização real com Google Calendar (fire-and-forget)
+            syncTask(newTask).then((eventId) => {
+                if (eventId) {
+                    updateTask(newTask.id, { syncStatus: "synced", gcalEventId: eventId });
+                } else {
+                    updateTask(newTask.id, { syncStatus: "synced" });
+                }
+            });
         },
         [isAnalyzing, updateTask]
     );
@@ -181,7 +202,8 @@ export function useTasks() {
         isAnalyzing,
         addTaskFromText,
         toggleTask,
-        updateTask,
+        updateTask: updateTaskAndSync,
+        deleteTask,
         generateSubtasks,
         toggleSubtask,
     };

@@ -18,3 +18,16 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Servidor Python (Sprint 1)
+server/.env
+server/__pycache__/
+server/routers/__pycache__/
+server/services/__pycache__/
+server/.venv/
+*.pyc
+*.pyo
+
+# Google Calendar OAuth — NUNCA commitar estes arquivos
+server/credentials.json
+server/token.json

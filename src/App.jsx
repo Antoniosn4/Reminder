@@ -4,8 +4,8 @@
 //  Responsabilidade única: composição da tela, sem lógica de domínio.
 // =============================================================
 
-import { useState, useRef, useCallback } from "react";
-import { BarChart2, CalendarCheck } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { BarChart2, CalendarCheck, CalendarX, Loader2 } from "lucide-react";
 
 import { useTasks } from "./hooks/useTasks";
 import { useVoiceRecording } from "./hooks/useVoiceRecording";
@@ -17,6 +17,7 @@ import { MentionMenu } from "./components/MentionMenu";
 import { ProactiveAgent } from "./components/ProactiveAgent";
 import { WeeklyReportModal } from "./components/WeeklyReportModal";
 import { TaskItem } from "./components/TaskList/TaskItem";
+import { getCalendarStatus, connectCalendar } from "./services/calendarService";
 
 export default function App() {
     const {
@@ -25,6 +26,7 @@ export default function App() {
         addTaskFromText,
         toggleTask,
         updateTask,
+        deleteTask,
         generateSubtasks,
         toggleSubtask,
     } = useTasks();
@@ -32,11 +34,53 @@ export default function App() {
     // ----- Estado do input e gravação -----
     const [inputValue, setInputValue] = useState("");
     const inputRef = useRef(null);
-    const { isRecording, toggleRecording } = useVoiceRecording(setInputValue);
+    const { isRecording, isTranscribing, toggleRecording } = useVoiceRecording(setInputValue);
 
     // ----- Feature 5: @mention -----
     const { isMenuOpen, handleInputChange, selectMember, closeMenu } =
         useMention(inputValue, setInputValue, inputRef);
+
+    // ----- Google Calendar: status + conexão -----
+    const [calendarConnected, setCalendarConnected] = useState(null);
+    const [isConnecting, setIsConnecting] = useState(false);
+
+    // Verifica status no mount; faz polling a cada 3s enquanto aguardando autorização
+    useEffect(() => {
+        let interval;
+        let timeoutId;
+
+        async function checkStatus() {
+            const connected = await getCalendarStatus();
+            setCalendarConnected(connected);
+            if (connected) {
+                // Autenticado: para tudo
+                setIsConnecting(false);
+                clearInterval(interval);
+                clearTimeout(timeoutId);
+            }
+        }
+
+        checkStatus();
+
+        if (isConnecting) {
+            interval = setInterval(checkStatus, 3000);
+            // Safety timeout: se o usuário não autorizar em 5min, reseta
+            timeoutId = setTimeout(() => {
+                clearInterval(interval);
+                setIsConnecting(false);
+            }, 5 * 60 * 1000);
+        }
+
+        return () => {
+            clearInterval(interval);
+            clearTimeout(timeoutId);
+        };
+    }, [isConnecting]);
+
+    const handleConnectCalendar = useCallback(async () => {
+        setIsConnecting(true);
+        await connectCalendar();
+    }, []);
 
     // ----- Feature 1: Agente proativo -----
     const [showProactiveBox, setShowProactiveBox] = useState(true);
@@ -87,9 +131,29 @@ export default function App() {
                         >
                             <BarChart2 className="w-4 h-4" /> Resumo
                         </button>
-                        <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700">
-                            <CalendarCheck className="w-4 h-4 text-emerald-500" /> GCal Sincronizado
-                        </div>
+                        {/* Botão de status / conexão do Google Calendar */}
+                        {calendarConnected === null ? (
+                            <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700">
+                                <Loader2 className="w-4 h-4 animate-spin" /> Verificando...
+                            </div>
+                        ) : calendarConnected ? (
+                            <div className="flex items-center gap-2 text-xs text-emerald-400 bg-gray-800 px-3 py-1.5 rounded-lg border border-emerald-800/50">
+                                <CalendarCheck className="w-4 h-4" /> GCal Conectado
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleConnectCalendar}
+                                disabled={isConnecting}
+                                className="flex items-center gap-2 text-xs font-semibold text-amber-400 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg border border-amber-800/50 transition-colors disabled:opacity-60"
+                            >
+                                {isConnecting ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <CalendarX className="w-4 h-4" />
+                                )}
+                                {isConnecting ? "Aguardando autorização..." : "Conectar Google"}
+                            </button>
+                        )}
                     </div>
                 </header>
 
@@ -99,9 +163,11 @@ export default function App() {
                         inputRef={inputRef}
                         value={inputValue}
                         isRecording={isRecording}
+                        isTranscribing={isTranscribing}
                         isAnalyzing={isAnalyzing}
                         onChange={handleInputChange}
                         onSubmit={handleSubmit}
+                        onToggleRecording={toggleRecording}
                     >
                         {/* Feature 5: Menu flutuante de @mention renderizado como filho */}
                         <MentionMenu isOpen={isMenuOpen} onSelect={selectMember} />
@@ -129,6 +195,7 @@ export default function App() {
                                 task={task}
                                 onToggleTask={toggleTask}
                                 onUpdateTask={updateTask}
+                                onDeleteTask={deleteTask}
                                 onGenerateSubtasks={generateSubtasks}
                                 onToggleSubtask={toggleSubtask}
                             />
@@ -148,6 +215,7 @@ export default function App() {
                                         task={task}
                                         onToggleTask={toggleTask}
                                         onUpdateTask={updateTask}
+                                        onDeleteTask={deleteTask}
                                         onGenerateSubtasks={generateSubtasks}
                                         onToggleSubtask={toggleSubtask}
                                     />

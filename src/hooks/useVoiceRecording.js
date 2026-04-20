@@ -1,51 +1,94 @@
 // =============================================================
 //  useVoiceRecording.js
-//  Custom Hook — Simula gravação de áudio com "ghost typing" palavra a palavra.
+//  Custom Hook — Gravação de áudio real via MediaRecorder + transcrição Whisper.
 //  Feature 3 — Dictation.
+//
+//  Fluxo: usuário clica mic → MediaRecorder inicia → usuário clica novamente →
+//  MediaRecorder para → blob é enviado ao backend → texto preenche o input.
 // =============================================================
 
-import { useState, useEffect, useCallback } from "react";
-
-/** Frase simulada digitada palavra por palavra durante a gravação. */
-const MOCK_WORDS = ["Lembrar", "de", "falar", "com", "@Ana", "sobre", "o", "design"];
-const WORD_INTERVAL_MS = 350;
-const STOP_DELAY_AFTER_LAST_WORD_MS = 1200;
+import { useState, useRef, useCallback } from "react";
+import { transcribeAudio } from "../services/whisperService";
 
 /**
  * @param {(value: string) => void} setInputValue - Setter do estado do input.
- * @returns {{ isRecording: boolean, toggleRecording: () => void }}
+ * @returns {{
+ *   isRecording: boolean,
+ *   isTranscribing: boolean,
+ *   toggleRecording: () => void,
+ * }}
  */
 export function useVoiceRecording(setInputValue) {
     const [isRecording, setIsRecording] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
 
-    // Efeito do ghost typing: dispara quando isRecording vira true
-    useEffect(() => {
-        if (!isRecording) return;
+    const mediaRecorderRef = useRef(/** @type {MediaRecorder|null} */(null));
+    const chunksRef = useRef(/** @type {Blob[]} */([]));
 
-        let wordIndex = 0;
-        setInputValue("");
+    /**
+     * Para a gravação ativa, consolida os chunks em um Blob,
+     * envia ao backend Whisper e injeta o texto transcrito no input.
+     */
+    const _stopAndTranscribe = useCallback(async () => {
+        const recorder = mediaRecorderRef.current;
+        if (!recorder || recorder.state === "inactive") return;
 
-        const interval = setInterval(() => {
-            setInputValue((prev) =>
-                prev ? `${prev} ${MOCK_WORDS[wordIndex]}` : MOCK_WORDS[wordIndex]
-            );
-            wordIndex++;
-
-            if (wordIndex >= MOCK_WORDS.length) {
-                clearInterval(interval);
-                setTimeout(() => setIsRecording(false), STOP_DELAY_AFTER_LAST_WORD_MS);
-            }
-        }, WORD_INTERVAL_MS);
-
-        return () => clearInterval(interval);
-    }, [isRecording, setInputValue]);
-
-    const toggleRecording = useCallback(() => {
-        setIsRecording((prev) => {
-            if (prev) setInputValue(""); // Cancela e limpa se estava gravando
-            return !prev;
+        // Resolve após o evento 'stop' do MediaRecorder (garante que todos os chunks chegaram)
+        await new Promise((resolve) => {
+            recorder.addEventListener("stop", resolve, { once: true });
+            recorder.stop();
         });
+
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        chunksRef.current = [];
+        mediaRecorderRef.current = null;
+
+        setIsRecording(false);
+        setIsTranscribing(true);
+
+        const text = await transcribeAudio(blob);
+
+        if (text) {
+            setInputValue(text);
+        }
+
+        setIsTranscribing(false);
     }, [setInputValue]);
 
-    return { isRecording, toggleRecording };
+    /**
+     * Inicia uma nova gravação via MediaRecorder.
+     * Solicita permissão de microfone se ainda não concedida.
+     */
+    const _startRecording = useCallback(async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream);
+
+            chunksRef.current = [];
+
+            recorder.addEventListener("dataavailable", (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data);
+            });
+
+            recorder.start();
+            mediaRecorderRef.current = recorder;
+            setIsRecording(true);
+        } catch (error) {
+            console.error(
+                "[useVoiceRecording] Permissão de microfone negada ou erro ao iniciar MediaRecorder:",
+                error
+            );
+        }
+    }, []);
+
+    /** Alterna entre início e parada da gravação. */
+    const toggleRecording = useCallback(() => {
+        if (isRecording) {
+            _stopAndTranscribe();
+        } else {
+            _startRecording();
+        }
+    }, [isRecording, _startRecording, _stopAndTranscribe]);
+
+    return { isRecording, isTranscribing, toggleRecording };
 }

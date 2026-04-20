@@ -2,18 +2,22 @@
 //  geminiService.js
 //  Camada de integração com a API Gemini.
 //  Responsabilidade única: comunicação HTTP com retry automático.
+//
+//  SEGURANÇA: A chave de API reside APENAS no servidor Python local
+//  (server/.env). Este arquivo nunca deve conter credenciais.
+//  O frontend chama http://localhost:8000/api/gemini/ (proxy local),
+//  que injeta a chave e repassa a requisição ao Google.
 // =============================================================
 
-const API_KEY = ""; // Injetada automaticamente pelo ambiente de execução
-const MODEL = "gemini-2.5-flash-preview-09-2025";
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
+// URL do proxy local — aponta diretamente para o backend Python
+const LOCAL_API_URL = "http://localhost:8000/api/gemini";
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Envia um prompt para a API Gemini e retorna a resposta parseada como JSON.
+ * Envia um prompt para a API Gemini via proxy local e retorna a resposta parseada como JSON.
  * Realiza até 5 tentativas com backoff exponencial em caso de falha.
  *
  * @param {string} prompt - O prompt de texto a ser enviado ao modelo.
@@ -31,7 +35,8 @@ export async function callGemini(prompt, schema) {
 
   for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
     try {
-      const response = await fetch(API_URL, {
+      // ✅ Variável corrigida aqui para LOCAL_API_URL
+      const response = await fetch(LOCAL_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -46,7 +51,10 @@ export async function callGemini(prompt, schema) {
     } catch (error) {
       const isLastAttempt = attempt === RETRY_DELAYS_MS.length - 1;
       if (isLastAttempt) {
-        console.error("Falha ao contatar Gemini API após várias tentativas:", error);
+        console.error(
+          "Falha ao contatar o servidor proxy. Verifique se 'server/main.py' está rodando (uvicorn main:app --reload):",
+          error
+        );
         return null;
       }
       await sleep(RETRY_DELAYS_MS[attempt]);
