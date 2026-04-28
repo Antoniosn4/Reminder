@@ -6,11 +6,12 @@
 import React from "react";
 
 /**
- * @param {{ icon: React.ReactElement, label: string, badge?: string|number, active?: boolean, textColor?: string }} props
+ * @param {{ icon: React.ReactElement, label: string, badge?: string|number, active?: boolean, textColor?: string, onClick?: () => void }} props
  */
-export function SidebarItem({ icon, label, badge, active, textColor = "text-gray-300" }) {
+export function SidebarItem({ icon, label, badge, active, textColor = "text-gray-300", onClick }) {
     return (
         <div
+            onClick={onClick}
             className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors
         ${active ? "bg-gray-700 text-white" : `hover:bg-gray-700/50 ${textColor}`}
       `}

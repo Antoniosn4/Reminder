@@ -1,28 +1,44 @@
 // =============================================================
 //  geminiService.js
-//  Camada de integração com a API Gemini.
-//  Responsabilidade única: comunicação HTTP com retry automático.
+//  Camada de integração com a API Gemini via proxy local.
 //
-//  SEGURANÇA: A chave de API reside APENAS no servidor Python local
-//  (server/.env). Este arquivo nunca deve conter credenciais.
-//  O frontend chama http://localhost:8000/api/gemini/ (proxy local),
-//  que injeta a chave e repassa a requisição ao Google.
+//  SEGURANÇA: A chave de API reside APENAS em server/.env.
+//  Este arquivo aponta para http://localhost:8000/api/gemini (proxy Python).
+//
+//  TIMEOUT: 5s por tentativa — se o servidor local não está rodando,
+//  falha rapidamente (connection refused é instantâneo, mas garantimos
+//  o timeout para outros casos). Máximo 2 tentativas (antes eram 5/31s).
 // =============================================================
 
-// URL do proxy local — aponta diretamente para o backend Python
 const LOCAL_API_URL = "http://localhost:8000/api/gemini";
-
-const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000];
+const FETCH_TIMEOUT_MS = 5_000;   // 5s por tentativa
+const MAX_RETRIES = 2;        // 1 tentativa + 1 retry = falha em ≤10s
+const RETRY_DELAY_MS = 1_000;   // 1s entre tentativas
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Envia um prompt para a API Gemini via proxy local e retorna a resposta parseada como JSON.
- * Realiza até 5 tentativas com backoff exponencial em caso de falha.
+ * Cria um fetch com timeout controlado por AbortController.
+ * Se o servidor local não responder em FETCH_TIMEOUT_MS, aborta.
+ */
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+/**
+ * Envia um prompt para a API Gemini via proxy local e retorna a resposta parseada.
+ * Falha rapidamente (≤10s) se o servidor estiver offline.
+ * Retorna null em caso de falha total (nunca lança exceção).
  *
- * @param {string} prompt - O prompt de texto a ser enviado ao modelo.
- * @param {object} schema - O JSON Schema descrevendo a estrutura da resposta esperada.
- * @returns {Promise<object|null>} O objeto JSON gerado pela IA, ou null em caso de falha total.
+ * @param {string} prompt - O prompt de texto.
+ * @param {object} schema - O JSON Schema da resposta.
+ * @returns {Promise<object|null>}
  */
 export async function callGemini(prompt, schema) {
   const requestBody = {
@@ -33,31 +49,32 @@ export async function callGemini(prompt, schema) {
     },
   };
 
-  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // ✅ Variável corrigida aqui para LOCAL_API_URL
-      const response = await fetch(LOCAL_API_URL, {
+      const response = await fetchWithTimeout(LOCAL_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error — status: ${response.status}`);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
       return JSON.parse(data.candidates[0].content.parts[0].text);
+
     } catch (error) {
-      const isLastAttempt = attempt === RETRY_DELAYS_MS.length - 1;
-      if (isLastAttempt) {
-        console.error(
-          "Falha ao contatar o servidor proxy. Verifique se 'server/main.py' está rodando (uvicorn main:app --reload):",
-          error
+      const isLast = attempt === MAX_RETRIES;
+      if (isLast) {
+        console.warn(
+          `[geminiService] Falha após ${MAX_RETRIES} tentativa(s). ` +
+          "Verifique se server/main.py está rodando.",
+          error?.message ?? error
         );
         return null;
       }
-      await sleep(RETRY_DELAYS_MS[attempt]);
+      await sleep(RETRY_DELAY_MS);
     }
   }
 

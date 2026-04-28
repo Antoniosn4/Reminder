@@ -12,27 +12,32 @@ import { Flame, Sparkles } from "lucide-react";
  *   label: string,
  *   time: string,
  *   streak?: number,
- *   aiAdjusted?: boolean
+ *   aiAdjusted?: boolean,
+ *   active?: boolean,
+ *   onClick?: () => void
  * }} props
  */
-export function SidebarRoutine({ icon, label, time, streak = 0, aiAdjusted = false }) {
+export function SidebarRoutine({ icon, label, time, streak = 0, aiAdjusted = false, active = false, onClick }) {
     return (
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-700/50 text-gray-400 hover:text-gray-200 transition-colors">
+        <div
+            onClick={onClick}
+            className={`flex items-center justify-between px-3 py-1.5 rounded-lg cursor-pointer transition-colors ${active
+                    ? "bg-gray-700 text-white shadow-sm"
+                    : "hover:bg-gray-700/50 text-gray-400 hover:text-gray-200"
+                }`}
+        >
             <div className="flex items-center gap-3 truncate">
                 {icon}
                 <span className="text-sm truncate">{label}</span>
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Badge de sequência (streak) */}
                 {streak > 0 && (
                     <span className="flex items-center gap-0.5 text-[9px] font-bold text-orange-400 bg-orange-400/10 px-1 rounded border border-orange-400/20">
                         <Flame className="w-2.5 h-2.5" />
-                        {streak}
+                        {streak}d
                     </span>
                 )}
-
-                {/* Badge de horário — verde se ajustado pela IA */}
                 <span
                     className={`text-[10px] font-medium px-1.5 py-0.5 rounded border flex items-center gap-1 ${aiAdjusted
                             ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
@@ -47,4 +52,3 @@ export function SidebarRoutine({ icon, label, time, streak = 0, aiAdjusted = fal
         </div>
     );
 }
-

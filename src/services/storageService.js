@@ -37,14 +37,45 @@ async function getDB() {
 }
 
 /**
+ * Migração automática de dados legados.
+ * Tasks criadas antes do campo `date` existir recebem a data de hoje.
+ * Tasks sem `time` estruturado recebem "Sem horário".
+ *
+ * @param {Array} tasks
+ * @returns {Array} Tasks com campos garantidos.
+ */
+function migrateTasks(tasks) {
+    const todayISO = new Date().toISOString().split("T")[0];
+    let migrated = false;
+
+    const result = tasks.map((task) => {
+        if (task.date && task.time) return task;
+        migrated = true;
+        return {
+            ...task,
+            date: task.date || todayISO,
+            time: task.time || "Sem horário",
+        };
+    });
+
+    if (migrated) {
+        console.info(`[storageService] Migrados ${result.filter((_, i) => !tasks[i].date || !tasks[i].time).length} task(s) legada(s) com campo 'date'/'time'.`);
+    }
+
+    return result;
+}
+
+/**
  * Retorna todas as tarefas armazenadas no IndexedDB.
+ * Aplica migração automática para tasks legadas sem campo `date`.
  *
  * @returns {Promise<Array>} Lista de tarefas (pode ser vazia).
  */
 export async function getAllTasks() {
     try {
         const db = await getDB();
-        return await db.getAll(STORE_NAME);
+        const raw = await db.getAll(STORE_NAME);
+        return migrateTasks(raw);
     } catch (error) {
         console.error("[storageService] Falha ao ler tarefas do IndexedDB:", error);
         return [];

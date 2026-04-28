@@ -33,6 +33,9 @@ export async function transcribeAudio(audioBlob) {
         }
 
         const data = await response.json();
+        if (data.device) {
+            console.info(`[Whisper] Device: ${data.device}`);
+        }
         return data.text ?? null;
     } catch (error) {
         console.error(

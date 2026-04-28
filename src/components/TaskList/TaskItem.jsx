@@ -17,8 +17,19 @@ import {
     X,
     RefreshCw,
     CalendarCheck,
+    ArrowDown,
+    Minus,
+    ArrowUp,
+    AlertCircle,
 } from "lucide-react";
 import { SubtaskList } from "./SubtaskList";
+
+const PRIORITY_ICONS = {
+    low:    { icon: ArrowDown,    color: "text-blue-400",    bg: "bg-blue-500/10", border: "border-blue-500/20" },
+    normal: { icon: Minus,        color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+    high:   { icon: ArrowUp,      color: "text-orange-400",  bg: "bg-orange-500/10", border: "border-orange-500/20" },
+    urgent: { icon: AlertCircle,   color: "text-red-400",     bg: "bg-red-500/10", border: "border-red-500/20" },
+};
 
 /**
  * @param {{
@@ -37,6 +48,7 @@ export function TaskItem({
     onDeleteTask,
     onGenerateSubtasks,
     onToggleSubtask,
+    onEditTask,
 }) {
     const [isGeneratingSubtasks, setIsGeneratingSubtasks] = useState(false);
     const [showSubtasks, setShowSubtasks] = useState(false);
@@ -149,9 +161,8 @@ export function TaskItem({
                     {!isEditing ? (
                         <div
                             className="flex flex-col flex-1 cursor-pointer overflow-hidden"
-                            onClick={() => onToggleTask(task.id)}
-                            onDoubleClick={handleEditStart}
-                            title="Duplo clique para editar"
+                            onClick={() => onEditTask ? onEditTask(task) : onToggleTask(task.id)}
+                            title="Clique para editar"
                         >
                             <div className="relative w-fit max-w-full">
                                 <span
@@ -178,6 +189,14 @@ export function TaskItem({
                                 >
                                     {task.time}
                                 </span>
+                                {task.date && task.date !== new Date().toISOString().split("T")[0] && (
+                                    <span
+                                        className={`text-[11px] font-medium px-2 py-0.5 rounded-md bg-gray-900 border transition-colors duration-300
+                                            ${task.completed ? "border-gray-800 text-gray-600" : "border-violet-500/20 text-violet-400"}`}
+                                    >
+                                        📅 {new Date(task.date + "T12:00:00").toLocaleDateString("pt-BR", { day: "numeric", month: "short" })}
+                                    </span>
+                                )}
                                 {task.assignee && (
                                     <div
                                         className="flex items-center gap-1 bg-gray-900/80 border border-gray-700 px-1.5 py-0.5 rounded-md"
@@ -204,6 +223,17 @@ export function TaskItem({
                                         {completedSubtasksCount}/{task.subtasks.length}
                                     </span>
                                 )}
+                                {(() => {
+                                    const p = PRIORITY_ICONS[task.priority || "normal"];
+                                    if (!p || task.priority === "normal") return null;
+                                    const Icon = p.icon;
+                                    return (
+                                        <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border ${p.bg} ${p.border} ${p.color}`}>
+                                            <Icon className="w-3 h-3" />
+                                            {task.priority === "urgent" ? "Urgente" : task.priority === "high" ? "Alta" : "Baixa"}
+                                        </span>
+                                    );
+                                })()}
                             </div>
                         </div>
                     ) : (
